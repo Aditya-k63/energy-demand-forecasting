@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>London Energy Demand Forecasting — LightGBM + Conformal Intervals</title>
+<link rel="icon" href="data:,">
+<style>
+  :root {
+    --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0;
+    --text: #0f172a; --text-2: #475569; --text-3: #94a3b8;
+    --accent: #4f46e5; --accent-dark: #4338ca; --accent-soft: #eef2ff;
+    --radius: 12px; --shadow: 0 1px 2px rgba(15,23,42,.05);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 1080px; margin: 0 auto; padding: 0 1.25rem; }
+
+  nav { background: var(--card); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50; }
+  .nav-inner { max-width: 1080px; margin: 0 auto; padding: 0.7rem 1.25rem; display: flex; align-items: center; justify-content: space-between; }
+  .brand b { font-size: 1rem; letter-spacing: -0.01em; display: block; line-height: 1.2; }
+  .brand span { font-size: 0.75rem; color: var(--text-3); }
+  .nav-links { display: flex; gap: 0.5rem; }
+  .nav-links a {
+    font-size: 0.85rem; color: var(--text-2); text-decoration: none;
+    padding: 0.4rem 0.75rem; border-radius: 8px; border: 1px solid transparent;
+  }
+  .nav-links a:hover { background: var(--bg); color: var(--text); }
+  .nav-links a.primary { border-color: var(--border); font-weight: 600; color: var(--text); }
+
+  .hero { padding: 2.25rem 0 1.5rem; }
+  .hero h1 { font-size: 1.65rem; font-weight: 700; letter-spacing: -0.02em; }
+  .hero p { color: var(--text-2); margin-top: 0.3rem; }
+  .badges { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.85rem; }
+  .badge {
+    font-size: 0.75rem; font-weight: 600; background: var(--accent-soft); color: var(--accent);
+    padding: 0.25rem 0.65rem; border-radius: 999px; border: 1px solid #e0e7ff;
+  }
+  .badge.neutral { background: var(--card); color: var(--text-2); border-color: var(--border); }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow);
+    padding: 1.4rem; margin-bottom: 1.5rem;
+  }
+  .card h2 { font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
+  .card .sub { font-size: 0.85rem; color: var(--text-2); margin-top: 0.2rem; }
+  .section-label {
+    font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--text-3); margin-bottom: 0.6rem;
+  }
+
+  .controls { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin: 0.9rem 0 0.6rem; }
+  .controls label { font-size: 0.85rem; font-weight: 600; color: var(--text-2); }
+  input[type="date"], input[type="number"] {
+    font: inherit; font-size: 0.88rem; padding: 0.4rem 0.6rem;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text);
+  }
+  .btn {
+    font: inherit; font-size: 0.88rem; font-weight: 600; padding: 0.5rem 1rem;
+    border-radius: 8px; cursor: pointer; border: 1px solid var(--border);
+    background: var(--card); color: var(--text-2); transition: background .15s;
+  }
+  .btn:hover { background: var(--bg); }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-primary:disabled { opacity: 0.55; cursor: wait; }
+  #status, #status2 { font-size: 0.82rem; color: var(--text-2); min-height: 1.1em; }
+
+  canvas { width: 100%; height: 340px; display: block; }
+  .legend { display: flex; gap: 1.1rem; font-size: 0.8rem; color: var(--text-2); margin-top: 0.5rem; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .legend .actual::before { background: #0f172a; }
+  .legend .fc::before { background: var(--accent); }
+  .legend .band::before { background: rgba(79,70,229,.2); height: 10px; }
+
+  .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.9rem; margin-top: 0.9rem; }
+  .metric { border: 1px solid var(--border); border-radius: 10px; padding: 0.85rem 1rem; background: #fbfdff; }
+  .metric .k { font-size: 0.75rem; font-weight: 650; color: var(--text-2); }
+  .metric .v { font-size: 1.35rem; font-weight: 750; letter-spacing: -0.02em; color: var(--accent); margin-top: 0.1rem; }
+  .metric .s { font-size: 0.7rem; color: var(--text-3); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.88rem; margin-top: 0.6rem; }
+  th, td { text-align: left; padding: 0.5rem 0.6rem; border-bottom: 1px solid var(--border); }
+  th { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-3); }
+  tbody tr:last-child td { border-bottom: none; }
+  .mono { font-variant-numeric: tabular-nums; }
+
+  footer { border-top: 1px solid var(--border); margin-top: 2.5rem; padding: 1.5rem 0 2.5rem; }
+  .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem; }
+  .footer-inner .t { font-size: 0.85rem; color: var(--text-2); }
+  .footer-inner a { color: var(--accent); text-decoration: none; font-size: 0.85rem; font-weight: 600; }
+
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite;
+    vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  @media (max-width: 860px) { .metric-grid { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <div class="brand">
+      <b>Energy Demand Forecasting</b>
+      <span>London Smart Meters · 24h horizon</span>
+    </div>
+    <div class="nav-links">
+      <a href="https://huggingface.co/neuronsbyisshu/london-energy-demand-forecast-lgbm" target="_blank" rel="noopener">Model</a>
+      <a href="https://www.kaggle.com/datasets/jeanmidev/smart-meters-in-london" target="_blank" rel="noopener" class="primary">Dataset</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+
+  <section class="hero">
+    <h1>Household Energy Demand Forecasting</h1>
+    <p>24-hour-ahead demand forecasts with conformal-calibrated prediction intervals — LightGBM trained on 4,443 London households.</p>
+    <div class="badges">
+      <span class="badge">LightGBM</span>
+      <span class="badge">Conformal intervals</span>
+      <span class="badge neutral">Walk-forward protocol</span>
+      <span class="badge neutral">−54% MAE vs baseline</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Model Evaluation <span style="font-size:0.7rem;font-weight:800;letter-spacing:.05em;background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;padding:.2rem .6rem;border-radius:999px;margin-left:.5rem;vertical-align:middle">Final test results</span></h2>
+    <p class="sub">Single held-out test window (Jan–Feb 2014). Baseline = seasonal-naive (same hour last week).</p>
+    <div class="metric-grid" id="metric-grid"></div>
+    <table>
+      <thead><tr><th>Model</th><th>MAE</th><th>RMSE</th><th>sMAPE</th><th>vs naive</th></tr></thead>
+      <tbody id="metrics-tbody"></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>Forecast Replay — Held-Out Test Period</h2>
+    <p class="sub">Actual demand vs the model's 24h-ahead forecast with the conformal-calibrated 80% interval. This is real held-out evaluation data, not a live feed.</p>
+    <div class="controls">
+      <label for="replay-start">Start</label>
+      <input type="date" id="replay-start" value="2014-01-13" min="2014-01-01" max="2014-02-21">
+      <label for="replay-days">Days</label>
+      <input type="number" id="replay-days" value="7" min="1" max="30" style="width:70px">
+      <button class="btn btn-primary" id="replay-btn" onclick="loadReplay()">Load replay</button>
+      <span id="status"></span>
+    </div>
+    <canvas id="replay-chart" width="1000" height="340"></canvas>
+    <div class="legend">
+      <span class="actual">Actual demand</span>
+      <span class="fc">Forecast (P50)</span>
+      <span class="band">80% interval</span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Live Forecast — Recursive 24h Inference</h2>
+    <p class="sub">Runs true recursive inference on the server: each predicted hour feeds back as a lag feature for the next. Sample history comes from the test period so you can compare against what actually happened.</p>
+    <div class="controls">
+      <button class="btn" onclick="loadSampleHistory()">Load sample history (Jan 1–8, 2014)</button>
+      <button class="btn btn-primary" id="fc-btn" onclick="runForecast()" disabled>Run 24h forecast</button>
+      <span id="status2"></span>
+    </div>
+    <canvas id="fc-chart" width="1000" height="340"></canvas>
+    <div class="legend">
+      <span class="actual">What actually happened</span>
+      <span class="fc">Recursive forecast (P50)</span>
+      <span class="band">80% conformal interval</span>
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-inner">
+      <div class="t"><b>Energy Demand Forecasting</b> — built with Python · LightGBM · split-conformal calibration · FastAPI · Docker</div>
+      <a href="https://huggingface.co/neuronsbyisshu/london-energy-demand-forecast-lgbm" target="_blank" rel="noopener">View models on Hugging Face →</a>
+    </div>
+  </footer>
+
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let sampleHistory = null, sampleWeather = null, sampleStart = null, sampleActual = null;
+
+function drawChart(canvas, series) {
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width, H = canvas.height;
+  const padL = 56, padR = 16, padT = 18, padB = 34;
+  ctx.clearRect(0, 0, W, H);
+
+  const allY = [];
+  series.forEach(s => { if (s.band) { allY.push(...s.band.lo, ...s.band.hi); } if (s.data) allY.push(...s.data); });
+  const yMin = Math.min(...allY), yMax = Math.max(...allY);
+  const span = (yMax - yMin) || 1;
+  const lo = yMin - span * 0.08, hi = yMax + span * 0.08;
+  const n = series[0].data ? series[0].data.length : series[0].band.lo.length;
+  const x = i => padL + (i / (n - 1)) * (W - padL - padR);
+  const y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+
+  ctx.strokeStyle = "#e2e8f0"; ctx.fillStyle = "#94a3b8"; ctx.font = "11px Inter, sans-serif";
+  for (let g = 0; g <= 4; g++) {
+    const v = lo + (g / 4) * (hi - lo);
+    ctx.beginPath(); ctx.moveTo(padL, y(v)); ctx.lineTo(W - padR, y(v)); ctx.stroke();
+    ctx.fillText(v.toFixed(2), 8, y(v) + 4);
+  }
+  ctx.fillText("kWh/h", 8, padT - 4);
+
+  const band = series.find(s => s.band);
+  if (band) {
+    ctx.beginPath();
+    band.band.hi.forEach((v, i) => i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v)));
+    for (let i = n - 1; i >= 0; i--) ctx.lineTo(x(i), y(band.band.lo[i]));
+    ctx.closePath();
+    ctx.fillStyle = "rgba(79,70,229,.16)"; ctx.fill();
+  }
+  series.forEach(s => {
+    if (!s.data) return;
+    ctx.beginPath();
+    s.data.forEach((v, i) => i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v)));
+    ctx.strokeStyle = s.color; ctx.lineWidth = s.width || 1.6; ctx.stroke();
+  });
+  ctx.lineWidth = 1;
+}
+
+async function loadStats() {
+  try {
+    const res = await fetch("/api/v1/stats");
+    const s = await res.json();
+    const lm = s.metrics_test.find(m => m.model.startsWith("lightgbm"));
+    const fmt = (v, d = 4) => (typeof v === "number" ? v.toFixed(d) : "—");
+    $("metric-grid").innerHTML = `
+      <div class="metric"><div class="k">LightGBM MAE</div><div class="v">${fmt(lm.MAE)}</div><div class="s">kWh/h per household</div></div>
+      <div class="metric"><div class="k">vs naive baseline</div><div class="v">−${lm.MAE_vs_naive_pct}%</div><div class="s">MAE reduction</div></div>
+      <div class="metric"><div class="k">Holiday MAE</div><div class="v">${fmt(lm.holiday_MAE)}</div><div class="s">after holiday-as-Sunday fix</div></div>
+      <div class="metric"><div class="k">Interval coverage</div><div class="v">${(s.conformal.coverage * 100).toFixed(1)}%</div><div class="s">80% nominal, conformal</div></div>`;
+    const base = s.metrics_test.find(m => m.model === "seasonal_naive_168h").MAE;
+    $("metrics-tbody").innerHTML = s.metrics_test.map(m => `
+      <tr><td>${m.model}</td><td class="mono">${fmt(m.MAE)}</td><td class="mono">${fmt(m.RMSE)}</td>
+      <td class="mono">${typeof m["sMAPE%"] === "number" ? m["sMAPE%"].toFixed(2) + "%" : "—"}</td>
+      <td class="mono">${((m.MAE - base) / base * 100).toFixed(1)}%</td></tr>`).join("");
+  } catch (e) { console.warn("stats unavailable", e); }
+}
+
+async function loadReplay() {
+  const start = $("replay-start").value, days = $("replay-days").value;
+  const st = $("status");
+  st.innerHTML = '<span class="spinner"></span>Loading…';
+  try {
+    const res = await fetch(`/api/v1/replay?start=${start}&days=${days}`);
+    if (!res.ok) throw new Error((await res.json()).detail || res.status);
+    const data = await res.json();
+    const rows = data.rows;
+    drawChart($("replay-chart"), [
+      { data: rows.map(r => r.demand), color: "#0f172a", width: 2 },
+      { data: rows.map(r => r.p50), color: "#4f46e5", width: 1.6 },
+      { band: { lo: rows.map(r => r.cp_lo), hi: rows.map(r => r.cp_hi) } },
+    ]);
+    st.textContent = `${rows.length} hours · ${data.test_range.min.slice(0,10)} → ${data.test_range.max.slice(0,10)} available`;
+  } catch (e) { st.textContent = "Failed: " + e.message; }
+}
+
+async function loadSampleHistory() {
+  const st = $("status2");
+  st.innerHTML = '<span class="spinner"></span>Loading history…';
+  try {
+    const res = await fetch("/api/v1/replay?start=2014-01-01&days=10");
+    const data = await res.json();
+    const rows = data.rows;
+    sampleHistory = rows.slice(0, 168).map(r => r.demand);
+    sampleWeather = {
+      temperature: rows.slice(0, 168).map(r => r.temperature),
+      apparentTemperature: rows.slice(0, 168).map(r => r.apparentTemperature),
+      humidity: rows.slice(0, 168).map(r => r.humidity),
+      windSpeed: rows.slice(0, 168).map(r => r.windSpeed),
+    };
+    sampleStart = rows[168].hour;
+    sampleActual = rows.slice(168, 192).map(r => r.demand);
+    $("fc-btn").disabled = false;
+    st.textContent = "History loaded (168 hours). Ready to forecast from " + sampleStart.slice(0, 16).replace("T", " ") + ".";
+  } catch (e) { st.textContent = "Failed: " + e.message; }
+}
+
+async function runForecast() {
+  const st = $("status2");
+  $("fc-btn").disabled = true;
+  st.innerHTML = '<span class="spinner"></span>Running recursive 24h forecast…';
+  try {
+    const res = await fetch("/api/v1/forecast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ history: sampleHistory, start: sampleStart, weather_history: sampleWeather }),
+    });
+    if (!res.ok) throw new Error((await res.json()).detail || res.status);
+    const data = await res.json();
+    const pts = data.points;
+    const series = [
+      { data: pts.map(p => p.p50), color: "#4f46e5", width: 1.8 },
+      { band: { lo: pts.map(p => p.p10), hi: pts.map(p => p.p90) } },
+    ];
+    if (sampleActual && sampleActual.length === pts.length) {
+      series.unshift({ data: sampleActual, color: "#0f172a", width: 2 });
+      const mae = pts.reduce((a, p, i) => a + Math.abs(p.p50 - sampleActual[i]), 0) / pts.length;
+      st.textContent = `24h forecast complete (${data.interval}) · MAE vs actual: ${mae.toFixed(4)} kWh`;
+    } else {
+      st.textContent = `24h forecast complete (${data.interval})`;
+    }
+    drawChart($("fc-chart"), series);
+  } catch (e) { st.textContent = "Failed: " + e.message; }
+  $("fc-btn").disabled = false;
+}
+
+loadStats();
+loadReplay();
+</script>
+</body>
+</html>
