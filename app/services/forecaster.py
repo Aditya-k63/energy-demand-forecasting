@@ -1,5 +1,6 @@
 import json
 from functools import lru_cache
+from pathlib import Path
 
 import lightgbm as lgb
 import pandas as pd
@@ -8,6 +9,14 @@ from huggingface_hub import hf_hub_download
 from app.config import settings
 
 WEATHER_VARS = ["temperature", "apparentTemperature", "humidity", "windSpeed"]
+
+HOLIDAYS_FILE = Path(__file__).resolve().parent.parent / "data" / "uk_bank_holidays.json"
+
+
+@lru_cache(maxsize=1)
+def _holiday_dates() -> frozenset:
+    with open(HOLIDAYS_FILE) as f:
+        return frozenset(json.load(f))
 
 
 @lru_cache(maxsize=1)
@@ -36,12 +45,18 @@ def load_artifacts() -> dict:
 
 def _step_features(series: list[float], ts: pd.Timestamp, weather: dict[str, float]) -> dict:
     s = pd.Series(series, dtype=float)
+    is_holiday = int(ts.strftime("%Y-%m-%d") in _holiday_dates())
+    dow = ts.dayofweek
+    is_weekend = int(dow >= 5)
+    if is_holiday:
+        dow = 6
+        is_weekend = 1
     feats = {
         "hour_of_day": ts.hour,
-        "dow": ts.dayofweek,
+        "dow": dow,
         "month": ts.month,
-        "is_weekend": int(ts.dayofweek >= 5),
-        "is_holiday": 0,
+        "is_weekend": is_weekend,
+        "is_holiday": is_holiday,
         "lag_1": s.iloc[-1],
         "lag_2": s.iloc[-2],
         "lag_3": s.iloc[-3],
